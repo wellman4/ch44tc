@@ -1,0 +1,37 @@
+.data
+.org:
+
+.org 10
+main:
+	mv i, 100
+	lafont i, t0
+	li 4, a0
+.org 4
+	la.font
+	lr v2,
+	lr v0,
+	lr v0, v16
+	lr v0, v4, i
+	draw 0, 0, 15
+	li a0, 257
+	subi
+	mv.srl a0, a1, 1
+	call 0x1111
+	call loop
+  .loop
+	jdx .loop, 2
+	j .loop
+	csrr dt, a0
+	csrr a0, st
+	csrw dt, 23
+	add.p ptr, va
+	sbcd (i), VA
+.global	
+
+dup:
+dup:
+
+.text
+	MV a0, a1
+
+unused:

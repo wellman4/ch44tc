@@ -1,0 +1,10 @@
+/build/
+
+*.bin
+*.exe
+*.out
+*.o
+*.obj
+*.pdb
+
+*.ch8

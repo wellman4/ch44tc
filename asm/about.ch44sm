@@ -1,0 +1,51 @@
+.text
+.org 0x0200
+
+_start:
+	li a0, 5
+	li a1, 4
+	call __mul8
+	li a1, 20
+	call assert
+	la.font i, a0
+	li t0, 0
+	draw t0, t0, 5
+  .busy_wait: j .busy_wait
+	
+__mul8:
+	seqi a1, 0
+	j .else
+	li a0, 0
+	ret
+  .else:
+	mv t0, a1
+	addi t0, 0b1111_1111
+	and t0, a1
+	seqi t0, 0
+	j .else1
+
+  .loop:
+	snei a1, 1
+	ret
+	mv.srl a1, a1
+	mv.sll a0, a0
+	j .loop
+
+  .else1:
+	mv t0, a0
+	addi a1, 0b1111_1111
+  .loop1:
+	snei a1, 0
+	ret
+	add a0, t0
+	addi a1, 0b1111_1111
+	j .loop1
+
+assert:
+	seq a0, a1
+	j .else
+	li a0, 1
+	ret
+  .else:
+	li a0, 0
+	ret
