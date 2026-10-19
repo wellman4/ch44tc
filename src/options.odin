@@ -46,6 +46,7 @@ Asm_Options :: struct {
 Disasm_Options :: struct {
 	src_path: string `args:"pos=0,required" usage:"Path to the CHIP-8 bytecode source file (.ch8)"`,
 	out_path: string `usage:"Specify the output path for the assembly program (.ch44sm)"`,
+	org:      int    `usage:"Base memory address (origin) where the binary is loaded."`,
 }
 
 options_init :: proc(opts: ^Options) -> (ok: bool) {
@@ -106,7 +107,7 @@ options_init :: proc(opts: ^Options) -> (ok: bool) {
 			return
 		}
 	case "disasm":
-		opts^ = Disasm_Options{}
+		opts^ = Disasm_Options{org=0x200}
 		disasm_opts := (^Disasm_Options)(opts)
 		err = flags.parse(disasm_opts, os.args[2:], parsing_style)
 		if err != nil {

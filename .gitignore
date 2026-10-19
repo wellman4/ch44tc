@@ -1,10 +1,10 @@
-/build/
+*
 
-*.bin
-*.exe
-*.out
-*.o
-*.obj
-*.pdb
+!*/
 
-*.ch8
+!*.odin
+!*.ch44sm
+
+!.gitignore
+!README.md
+!LICENSE

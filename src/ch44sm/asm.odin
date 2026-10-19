@@ -37,40 +37,9 @@ Section :: enum {
 Disasm_Context :: struct {
 	src_path:     string,
 	src:          []u8,
+	org:          int,
 	symbol_table: map[int]string,
 	builder:      strings.Builder,
-}
-
-asm_ctx_init :: proc(
-	asm_ctx: ^Asm_Context,
-	src_path: string,
-	src: string,
-	emit_tokens: bool,
-	allocator: mem.Allocator
-) {
-	context.allocator    = allocator
-	asm_ctx.src_path     = src_path
-	asm_ctx.src          = src
-	asm_ctx.emit_tokens  = emit_tokens
-	asm_ctx.diagnostics  = make([dynamic]Diagnostic)
-	asm_ctx.tokens       = make([dynamic]Token)
-	asm_ctx.program      = new(Program)
-	asm_ctx.symbol_table = make(map[string]Symbol_Info)
-	asm_ctx.bytecode     = make([dynamic]u8)
-}
-
-disasm_ctx_init :: proc(
-	disasm_ctx: ^Disasm_Context,
-	src_path: string,
-	src: []u8,
-	allocator: mem.Allocator
-) {
-	context.allocator = allocator
-
-	disasm_ctx.src_path     = src_path
-	disasm_ctx.src          = src
-	disasm_ctx.symbol_table = make(map[int]string)
-	strings.builder_init(&disasm_ctx.builder)
 }
 
 assemble :: proc(asm_ctx: ^Asm_Context, allocator: mem.Allocator) -> (ok: bool) {
@@ -92,6 +61,7 @@ assemble :: proc(asm_ctx: ^Asm_Context, allocator: mem.Allocator) -> (ok: bool) 
 
 disassemble :: proc(disasm_ctx: ^Disasm_Context, allocator: mem.Allocator) -> string {
 	context.allocator = allocator
+
 
 	bytes := disasm_ctx.src
 	label_counter := 0
@@ -118,7 +88,7 @@ disassemble :: proc(disasm_ctx: ^Disasm_Context, allocator: mem.Allocator) -> st
 			break
 		}
 
-		if label, exists := disasm_ctx.symbol_table[i]; exists {
+		if label, exists := disasm_ctx.symbol_table[disasm_ctx.org + i]; exists {
 			fmt.sbprintfln(&disasm_ctx.builder, "%s:", label)
 		}
 
