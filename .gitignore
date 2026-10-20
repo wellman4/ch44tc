@@ -4,6 +4,7 @@
 
 !*.odin
 !*.ch44sm
+!*.svg
 
 !.gitignore
 !README.md
