@@ -74,6 +74,7 @@ Vm :: struct {
 	i: u16,
 	// Memory
 	mem: [1<<16]u8,
+	max_allowed_ram: int,
 	stack: [1<<8]u16,
 	// Timers
 	delay_timer: u8,
@@ -104,8 +105,12 @@ init :: proc(v: ^Vm, platform: Platform, quirks: Quirks, no_font: bool) {
 	v.status = .Running
 
 	switch v.platform {
-	case .Chip8: v.quirks = { .Vf_Reset, .Vblank_Sync, .Clipping }
-	case .Super_Chip: v.quirks = { .Memory_Increment, .Vblank_Sync, .Clipping, .Shift, .Jump_With_Offset }
+	case .Chip8:
+		v.quirks = { .Vf_Reset, .Vblank_Sync, .Clipping }
+		v.max_allowed_ram = 1 << 16
+	case .Super_Chip:
+		v.quirks = { .Memory_Increment, .Vblank_Sync, .Clipping, .Shift, .Jump_With_Offset }
+		v.max_allowed_ram = 1 << 16
 	}
 
 	v.quirks ~= quirks
@@ -122,8 +127,16 @@ destroy :: proc(v: ^Vm) {
 load_bytes :: proc(v: ^Vm, data: []u8, start_address: u16) -> (ok: bool) {
 	end_address := int(start_address) + len(data)
 
-	if end_address > len(v.mem) {
-		fmt.eprintln("Ошибка: данные слишком велики для памяти ВМ!")
+	if end_address > v.max_allowed_ram {
+		fmt.eprintf(
+			"Error: ROM size exceeds memory limit for platform %v.\n" +
+			"Tried to write up to address 0x%X (%d bytes), but max allowed is 0x%X (%d bytes).\n" +
+			"[Start: 0x%X, ROM Size: %d bytes]\n",
+			v.platform,
+			end_address, end_address,
+			v.max_allowed_ram, v.max_allowed_ram,
+			start_address, len(data),
+		)
 		return
 	}
 
