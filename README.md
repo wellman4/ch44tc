@@ -11,14 +11,16 @@
   **CHIP-8 Toolchain** — A set of development tools for 
   creating, debugging, and running CHIP-8 programs
 
+<img width="600" alt="Screenshot demonstrating the debugger in action" src="https://github.com/user-attachments/assets/efa6c4d4-60ea-4c55-9c47-1ceb911508c7" />
+
 </div>
 
 ## ✨ Features
 - 🪲 Debugger
 - 👾 CHIP-8 Bytecode Interpreter (Register-Based Virtual Machine)
 - ⚙️ Assembler
-- 🔍 Assembly diagnostics report (clear error reporting and code analysis during assembly)
-- 🔓 Disassembler
+- 🩺 Assembly diagnostics report (clear error reporting and code analysis during assembly)
+- 🔬 Disassembler
 - 🚀 Super-CHIP extension 
 
 > [!NOTE]

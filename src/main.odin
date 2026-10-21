@@ -139,7 +139,7 @@ run_disasm_app :: proc(
 	if len(opts.out_path) > 0 {
 		write_err := os.write_entire_file(opts.out_path, ch44sm.disassemble(disasm_ctx, context.allocator))
 		if write_err != nil {
-			fmt.eprintfln("Error: failed to write output file at '%s'. Reason: %v", opts.out_path, err)
+			fmt.eprintfln("Error: failed to write output file at '%s'. Reason: %v", opts.out_path, write_err)
 			return
 		}
 	}

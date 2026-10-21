@@ -2,14 +2,7 @@
 .org 0x0200
 
 _start:
-	li a0, 5
-	li a1, 4
-	call __mul8
-	li a1, 20
-	call assert
-	la.font i, a0
-	li t0, 0
-	draw t0, t0, 5
+	call test_mul8
   .busy_wait: j .busy_wait
 	
 __mul8:
@@ -49,3 +42,21 @@ assert:
   .else:
 	li a0, 0
 	ret
+
+test_mul8:
+	la i, test_mul8_data_set
+	lr a0, a0, (i)
+	mv t0, a0
+
+	lr v0, v2, (i)
+	call __mul8
+	mv a1, a2
+	call assert
+	ret
+
+.data
+
+test_mul8_data_set:
+.db 3
+.db 5, 4, 20
+

@@ -155,7 +155,7 @@ dump_symbols :: proc(asm_ctx: ^ch44sm.Asm_Context) {
 			info.section,
 			ch44sm.COLOR_RESET,
 			ch44sm.COLOR_BLUE,
-			info.address,
+			info.offset,
 			ch44sm.COLOR_RESET,
 		)
 	}
@@ -170,8 +170,16 @@ dump_bytecode :: proc(asm_ctx: ^ch44sm.Asm_Context) {
 		ch44sm.COLOR_RESET,
 	)
 
+	fmt.printf("%s     ", ch44sm.COLOR_GRAY)
+	for j := 0; j < 16; j += 1 {
+		fmt.printf("%02X ", j)
+	}
+	fmt.printf("  ASCII\n")
+	fmt.printf("---+-------------------------------------------------+-----------------%s\n", ch44sm.COLOR_RESET)
+
+
 	for i := 0; i < len(asm_ctx.bytecode); i += 16 {
-		fmt.printf("%s%08X:%s ", ch44sm.COLOR_GRAY, i, ch44sm.COLOR_RESET)
+		fmt.printf("%s%03X|%s ", ch44sm.COLOR_GRAY, i, ch44sm.COLOR_RESET)
 
 		for j := 0; j < 16; j += 1 {
 			if i + j < len(asm_ctx.bytecode) {

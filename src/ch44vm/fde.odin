@@ -101,35 +101,43 @@ tick :: proc(v: ^Vm) {
 	case 0x7000: v.v[x] += nn
 	case 0x8000:
 		switch n {
+		// mv rd, rs
 		case 0x0: v.v[x] = v.v[y]
+		// or rs1, rs2
 		case 0x1:
 			v.v[x] |= v.v[y]
 			if .Vf_Reset in v.quirks do v.v[0xF] = 0
+		// and rs1, rs2
 		case 0x2:
 			v.v[x] &= v.v[y]
 			if .Vf_Reset in v.quirks do v.v[0xF] = 0
+		// xor rs1, rs2
 		case 0x3:
 			v.v[x] ~= v.v[y]
 			if .Vf_Reset in v.quirks do v.v[0xF] = 0
+		// add rs1, rs2
 		case 0x4:
 			result := u16(v.v[x]) + u16(v.v[y])
 			v.v[x] = u8(result & 0xFF)
 			v.v[0xF] = u8(1) if result > 255 else u8(0)
+		// sub rs1, rs2
 		case 0x5:
 			vf := u8(1) if v.v[x] >= v.v[y] else u8(0)
 			v.v[x] -= v.v[y]
 			v.v[0xF] = vf
+		// mv.srl rd, rs
 		case 0x6:
 			if .Shift not_in v.quirks do v.v[x] = v.v[y]
 
 			vf := v.v[x] & 0x01
 			v.v[x] >>= 1
 			v.v[0xF] = vf
-		
+		// subn rs1, rs2
 		case 0x7:
 			vf := u8(1) if v.v[y] >= v.v[x] else u8(0)
 			v.v[x] = v.v[y] - v.v[x]
 			v.v[0xF] = vf
+		// mv.srl rd, rs
 		case 0xE:
 			if .Shift not_in v.quirks do v.v[x] = v.v[y]
 
@@ -139,6 +147,7 @@ tick :: proc(v: ^Vm) {
 		case:
 			fmt.printf("Unknown opcode 0x8000: 0x%X\n", opcode)
 		}
+	// sne rs1, rs2
 	case 0x9000:
 		if v.v[x] != v.v[y] {
 			v.pc += 2
@@ -254,16 +263,18 @@ tick :: proc(v: ^Vm) {
 			v.mem[v.i] = value / 100
 			v.mem[v.i+ 1] = (value / 10) % 10
 			v.mem[v.i+ 2] = value % 10
+		// sr (i) rs1, rs2
 		case 0x55:
 			for r in 0..=x {
 				v.mem[v.i + u16(r)] = v.v[r]
 			}
-			if .Memory_Increment not_in v.quirks do v.i += u16(x) + 1
+			if .Memory_Increment in v.quirks do v.i += u16(x) + 1
+		// lr rs1, rs2, (i)
 		case 0x65:
 			for reg in 0..=x {
 				v.v[reg] = v.mem[v.i + u16(reg)]
 			}
-			if .Memory_Increment not_in v.quirks do v.i += u16(x) + 1
+			if .Memory_Increment in v.quirks do v.i += u16(x) + 1
 		case 0x75:
 			max_reg := x if x < 8 else 7
 			for reg in 0..=max_reg {

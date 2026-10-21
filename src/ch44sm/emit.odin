@@ -11,6 +11,9 @@ emit_program :: proc(tctx: ^Asm_Context) -> (success: bool) {
 	data_buf := make([dynamic]u8, context.temp_allocator)
 
 	tctx.current_section = .Text
+	program_len := u16(tctx.section_pcs[.Text])
+	tctx.section_pcs[.Text] = 0
+	tctx.section_pcs[.Data] = 0
 
 	stmt_loop: for &stmt in tctx.program {
 		#partial switch &s in stmt {
@@ -73,7 +76,8 @@ emit_program :: proc(tctx: ^Asm_Context) -> (success: bool) {
 
 					symbol_info, exists := tctx.symbol_table[target_label]
 					if exists {
-						op_label.resolved_address = u16(symbol_info.address)
+						op_label.resolved_address = u16(symbol_info.offset)
+						if symbol_info.section == .Data do op_label.resolved_address += program_len
 						symbol_info.uses += 1
 						tctx.symbol_table[target_label] = symbol_info
 					} else {

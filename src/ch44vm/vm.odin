@@ -98,8 +98,8 @@ Vm :: struct {
 
 }
 
-init :: proc(v: ^Vm, platform: Platform, quirks: Quirks, no_font: bool) {
-	v.pc = 0x200
+init :: proc(v: ^Vm, platform: Platform, quirks: Quirks, no_font: bool, org: u16) {
+	v.pc = org
 	v.display_size = {64, 32}
 	v.platform = platform
 	v.status = .Running
@@ -107,10 +107,10 @@ init :: proc(v: ^Vm, platform: Platform, quirks: Quirks, no_font: bool) {
 
 	switch v.platform {
 	case .Chip8:
-		v.quirks = { .Vf_Reset, .Vblank_Sync, .Clipping }
+		v.quirks = { .Vf_Reset, .Memory_Increment, .Vblank_Sync, .Clipping }
 		v.max_allowed_ram = 1 << 16
 	case .Super_Chip:
-		v.quirks = { .Memory_Increment, .Vblank_Sync, .Clipping, .Shift, .Jump_With_Offset }
+		v.quirks = { .Shift, .Jump_With_Offset, .Vblank_Sync, .Clipping, }
 		v.max_allowed_ram = 1 << 16
 	}
 

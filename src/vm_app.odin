@@ -88,6 +88,33 @@ run_vm_app :: proc(
 
 @(private="file")
 app_init :: proc(app_ctx: ^Vm_App_Context) -> (ok: bool) {
+	src, err := os.read_entire_file_from_path(app_ctx.opts.src_path, context.allocator)
+	if err != nil {
+		fmt.eprintfln("Error: failed to read source file at '%s'. Reason: %v", app_ctx.opts.src_path, err)
+		return
+	}
+	defer delete(src)
+
+	ch44vm.init(
+		&app_ctx.vm,
+		app_ctx.opts.platform,
+		app_ctx.opts.quirks,
+		app_ctx.opts.no_font,
+		app_ctx.opts.org,
+	)
+
+	bytecode: []u8 = src
+
+	switch filepath.ext(app_ctx.opts.src_path) {
+	case ".ch8": ch44vm.load_bytes(&app_ctx.vm, bytecode, app_ctx.vm.pc) or_return
+	case ".ch44sm":
+		asm_ctx: ch44sm.Asm_Context
+		asm_opts: Options = Asm_Options{src_path=app_ctx.opts.src_path}
+		if !run_asm_app(&asm_opts, &asm_ctx, app_ctx.translation_allocator) do return
+		bytecode = asm_ctx.bytecode[:]
+		ch44vm.load_bytes(&app_ctx.vm, bytecode, app_ctx.vm.pc) or_return
+	}
+
 	if !sdl3.Init({.VIDEO, .AUDIO}) {
 		fmt.eprintln(sdl3.GetError())
 		return
@@ -127,79 +154,27 @@ app_init :: proc(app_ctx: ^Vm_App_Context) -> (ok: bool) {
 	sdl3.SetTextureScaleMode(app_ctx.canvas, .NEAREST)
 
 	app_ctx.canvas_dest = sdl3.FRect {
-	    x = 0.0,
-	    y = 0.0,
-	    w = f32(app_ctx.window_size.x),
-	    h = f32(app_ctx.window_size.y),
+		x = 0.0,
+		y = 0.0,
+		w = f32(app_ctx.window_size.x),
+		h = f32(app_ctx.window_size.y),
 	}
 
 	if !ttf.Init() {
 		fmt.eprintfln("Error: failed to init ttf. Reason: %v", sdl3.GetError())
 		return
-    }
+	}
 
-    font := ttf.OpenFont("assets/fonts/Source_Code_Pro/SourceCodePro-Regular.ttf", 16.0)
-    if font == nil {
+	font := ttf.OpenFont("assets/fonts/Source_Code_Pro/SourceCodePro-Regular.ttf", 16.0)
+	if font == nil {
 		fmt.eprintfln("Error: failed to open font. Reason: %v", sdl3.GetError())
 		return
-    }
-
-    app_ctx.font = font
-    char_height: i32 = ttf.GetFontHeight(font)
-    app_ctx.char_height = f32(char_height)
-
-	src, err := os.read_entire_file_from_path(app_ctx.opts.src_path, context.allocator)
-	if err != nil {
-		fmt.eprintfln("Error: failed to read source file at '%s'. Reason: %v", app_ctx.opts.src_path, err)
-		return
-	}
-	defer delete(src)
-
-	ch44vm.init(&app_ctx.vm, app_ctx.opts.platform, app_ctx.opts.quirks, app_ctx.opts.no_font)
-
-	bytecode: []u8 = src
-
-	switch filepath.ext(app_ctx.opts.src_path) {
-	case ".ch8": ch44vm.load_bytes(&app_ctx.vm, bytecode, app_ctx.vm.pc) or_return
-	case ".ch44sm":
-		asm_ctx: ch44sm.Asm_Context
-		asm_opts: Options = Asm_Options{src_path=app_ctx.opts.src_path}
-		if !run_asm_app(&asm_opts, &asm_ctx, app_ctx.translation_allocator) do return
-		bytecode = asm_ctx.bytecode[:]
-		ch44vm.load_bytes(&app_ctx.vm, bytecode, app_ctx.vm.pc) or_return
 	}
 
-	if app_ctx.opts.debug {
-		app_ctx.dbg_ctx.is_enabled = true
-		app_ctx.dbg_ctx.is_paused = true
-		ch44sm.disasm_ctx_init(
-			dctx = &app_ctx.dbg_ctx.disasm_ctx,
-			src_path = app_ctx.opts.src_path,
-			src = bytecode,
-			org = 0x200,
-			allocator = app_ctx.translation_allocator,
-		)
+	app_ctx.font = font
+	char_height: i32 = ttf.GetFontHeight(font)
+	app_ctx.char_height = f32(char_height)
 
-		asm_source := ch44sm.disassemble(&app_ctx.dbg_ctx.disasm_ctx, app_ctx.translation_allocator)
-		lines, err := strings.split_lines(asm_source, app_ctx.translation_allocator)
-		for line_str in lines {
-		    txt_obj := ttf.CreateText(
-		    	app_ctx.text_engine,
-		    	app_ctx.font,
-		    	([^]u8)(raw_data(line_str)),
-		    	len(line_str)
-		    )
-		    append(&app_ctx.dbg_ctx.lines, txt_obj)
-		}
-
-		app_ctx.canvas_dest = sdl3.FRect {
-		    x = f32(app_ctx.window_size.x - 448),
-		    y = 0.0,
-		    w = 448.0,
-		    h = 224.0,
-		}
-	}
-	
 	app_ctx.last_time = sdl3.GetTicksNS()
 	app_ctx.target_frame_time = 1_000_000_000 / u64(app_ctx.opts.target_fps)
 
@@ -249,6 +224,37 @@ app_init :: proc(app_ctx: ^Vm_App_Context) -> (ok: bool) {
 		)
 	} else {
 		sdl3.ResumeAudioStreamDevice(app_ctx.audio_stream)
+	}
+
+	if app_ctx.opts.debug {
+		app_ctx.dbg_ctx.is_enabled = true
+		app_ctx.dbg_ctx.is_paused = true
+		ch44sm.disasm_ctx_init(
+			dctx = &app_ctx.dbg_ctx.disasm_ctx,
+			src_path = app_ctx.opts.src_path,
+			src = bytecode,
+			org = app_ctx.opts.org,
+			allocator = app_ctx.translation_allocator,
+		)
+
+		asm_source := ch44sm.disassemble(&app_ctx.dbg_ctx.disasm_ctx, app_ctx.translation_allocator)
+		lines, err := strings.split_lines(asm_source, app_ctx.translation_allocator)
+		for line_str in lines {
+			txt_obj := ttf.CreateText(
+				app_ctx.text_engine,
+				app_ctx.font,
+				([^]u8)(raw_data(line_str)),
+				len(line_str)
+			)
+			append(&app_ctx.dbg_ctx.lines, txt_obj)
+		}
+
+		app_ctx.canvas_dest = sdl3.FRect {
+			x = f32(app_ctx.window_size.x - 448),
+			y = 0.0,
+			w = 448.0,
+			h = 224.0,
+		}
 	}
 
 	return true
@@ -315,17 +321,17 @@ update :: #force_inline proc (app_ctx: ^Vm_App_Context, dt: f64) -> (advance := 
 
 	if app_ctx.dbg_ctx.is_enabled {
 		app_ctx.canvas_dest = sdl3.FRect {
-		    x = f32(app_ctx.window_size.x - 448),
-		    y = 0.0,
-		    w = 448.0,
-		    h = 224.0,
+			x = f32(app_ctx.window_size.x - 448),
+			y = 0.0,
+			w = 448.0,
+			h = 224.0,
 		}
 	} else {
 		app_ctx.canvas_dest = sdl3.FRect {
-		    x = 0.0,
-		    y = 0.0,
-		    w = f32(app_ctx.window_size.x),
-		    h = f32(app_ctx.window_size.y),
+			x = 0.0,
+			y = 0.0,
+			w = f32(app_ctx.window_size.x),
+			h = f32(app_ctx.window_size.y),
 		}
 	}
 
@@ -447,7 +453,7 @@ draw_asm_source :: proc(app_ctx: ^Vm_App_Context) {
 			sdl3.RenderFillRect(app_ctx.renderer, &highlight_rect)
 		}
 		
-	    ttf.DrawRendererText(txt_obj, 0, line_y)
+		ttf.DrawRendererText(txt_obj, 0, line_y)
 	}
 }
 
@@ -495,7 +501,7 @@ app_quit :: proc (app_ctx: ^Vm_App_Context) {
 		}
 
 		ttf.DestroyRendererTextEngine(app_ctx.text_engine)
-	    ttf.CloseFont(app_ctx.font)
+		ttf.CloseFont(app_ctx.font)
 
 		if app_ctx.renderer != nil do sdl3.DestroyRenderer(app_ctx.renderer)
 		sdl3.DestroyTexture(app_ctx.canvas)
@@ -503,7 +509,7 @@ app_quit :: proc (app_ctx: ^Vm_App_Context) {
 		if app_ctx.audio_stream != nil do sdl3.DestroyAudioStream(app_ctx.audio_stream)
 	}
 
-    ttf.Quit()
+	ttf.Quit()
 	sdl3.Quit()
 }
 

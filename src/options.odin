@@ -24,6 +24,7 @@ Vm_Options :: struct {
 	tick_rate:  u16                    `usage:"Set the CPU speed in Hz (instructions per second)."`,
 	colors:     [dynamic]u32           `args:"manifold=2" usage:"Set custom RGBA background and foreground colors for the display (e.g. 0x000000ff)."`,
 	keys:       [dynamic]sdl3.Scancode `args:"manifold=16" usage:"Maps SDL3 scancodes to CHIP-8 keys using uppercase enum variants (e.g., X, _1, _2)."`,
+	org:        u16                    `usage:"Memory address where the program is loaded"`,
 	no_font:    bool                   `usage:"Skip loading the built-in font sprite data into the RAM."`,
 	fullscreen: bool                   `usage:"Launch the virtual machine in fullscreen mode."`,
 	maximized:  bool                   `usage:"Launch the virtual machine with a maximized window."`,
@@ -47,7 +48,7 @@ Asm_Options :: struct {
 Disasm_Options :: struct {
 	src_path: string `args:"pos=0,required" usage:"Path to the CHIP-8 bytecode source file (.ch8)"`,
 	out_path: string `usage:"Specify the output path for the assembly program (.ch44sm)"`,
-	org:      int    `usage:"Base memory address (origin) where the binary is loaded."`,
+	org:      u16    `usage:"Base memory address (origin) where the binary is loaded."`,
 }
 
 options_init :: proc(opts: ^Options) -> (ok: bool) {
@@ -83,6 +84,7 @@ options_init :: proc(opts: ^Options) -> (ok: bool) {
 			tick_rate  = 1400,
 			volume     = 0.8,
 			platform   = .Chip8,
+			org        = 0x200,
 		}
 		vm_opts := (^Vm_Options)(opts)
 
@@ -187,6 +189,8 @@ mnemonics_help_message := """
 	  Data Transfer:
 		[8xy0] mv rd, rs
 		[6xnn] li rd, imm8
+
+	  Arithmetic:
 		[8xy4] add rs1, rs2
 		[7xnn] addi rs1, imm8 
 		[8xy5] sub rs1, rs2
@@ -239,16 +243,16 @@ registers_help_message := """
 		-----|-------|------------------
 		Name | Alias | Description
 		-----|-------|------------------
-		v0   | s0    | Saved
-		v1   | s1    | Saved
-		v2   | s2    | Saved
-		v3   | s3    | Saved
-		v4   | s4    | Saved
+		v0   | a0    | Argument / Return
+		v1   | a1    | Argument
+		v2   | a2    | Argument
+		v3   | a3    | Argument
 		-----|-------|------------------
-		v5   | a0    | Argument / Return
-		v6   | a1    | Argument
-		v7   | a2    | Argument
-		v8   | a3    | Argument
+		v4   | s0    | Saved
+		v5   | s1    | Saved
+		v6   | s2    | Saved
+		v7   | s3    | Saved
+		v8   | s4    | Saved
 		-----|-------|------------------
 		v9   | t0    | Temporary
 		v10  | t1    | Temporary

@@ -22,7 +22,7 @@ Asm_Context :: struct {
 }
 
 Symbol_Info :: struct {
-	address: int,
+	offset:  int,
 	section: Section,
 	uses:    int,
 	loc:     Source_Location,
@@ -37,7 +37,7 @@ Section :: enum {
 Disasm_Context :: struct {
 	src_path:     string,
 	src:          []u8,
-	org:          int,
+	org:          u16,
 	symbol_table: map[int]string,
 	builder:      strings.Builder,
 	row_addrs:   map[int]int,
@@ -47,7 +47,7 @@ disasm_ctx_init :: proc(
 	dctx: ^Disasm_Context,
 	src_path: string,
 	src: []u8,
-	org: int,
+	org: u16,
 	allocator: mem.Allocator,
 
 ) {
@@ -107,11 +107,11 @@ disassemble :: proc(disasm_ctx: ^Disasm_Context, allocator: mem.Allocator) -> st
 			break
 		}
 
-		if label, exists := disasm_ctx.symbol_table[disasm_ctx.org + i]; exists {
+		if label, exists := disasm_ctx.symbol_table[int(disasm_ctx.org) + i]; exists {
 			fmt.sbprintfln(&disasm_ctx.builder, "%s:", label)
 			row += 1
 		}
-		disasm_ctx.row_addrs[disasm_ctx.org + i] = row
+		disasm_ctx.row_addrs[int(disasm_ctx.org) + i] = row
 
 		opcode := (u16(bytes[i]) << 8) | u16(bytes[i + 1])
 
@@ -340,7 +340,7 @@ resolve :: proc(asm_ctx: ^Asm_Context) -> bool {
 				continue
 			}
 			asm_ctx.symbol_table[label.resolved_name] = Symbol_Info {
-				address = asm_ctx.section_pcs[asm_ctx.current_section],
+				offset = asm_ctx.section_pcs[asm_ctx.current_section],
 				section = asm_ctx.current_section,
 				loc     = label.loc,
 			}
