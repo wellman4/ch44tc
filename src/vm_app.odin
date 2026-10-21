@@ -9,6 +9,7 @@ import "core:strings"
 import "core:path/filepath"
 
 import "vendor:sdl3"
+import "vendor:sdl3/ttf"
 
 import "utils"
 import "ch44vm"
@@ -35,59 +36,61 @@ chip8_default_key_map := []sdl3.Scancode{
 }
 
 Vm_App_Context :: struct {
-	opts:              ^Vm_Options,
-	window:            ^sdl3.Window,
-	canvas:            ^sdl3.Texture,
-	renderer:          ^sdl3.Renderer,
-	vm:                ch44vm.Vm,
-	key_map:           map[sdl3.Scancode]u8,
-	target_frame_time: u64,
-	last_time:         u64,
-	cpu_timer:         utils.Timer,
-	chip8_60hz_timer:  utils.Timer,
-	audio_device:      sdl3.AudioDeviceID,
-	audio_stream:      ^sdl3.AudioStream,
-	audio_sample_id:   u32,
-	audio_frequency:   f32,
-	audio_sample_rate: f32,
-	audio_volume:      f32,
+	opts:                  ^Vm_Options,
+	window:                ^sdl3.Window,
+	window_size:           [2]i32,
+	canvas:                ^sdl3.Texture,
+	canvas_dest:           sdl3.FRect,
+	renderer:              ^sdl3.Renderer,
+	font:                  ^ttf.Font,
+	char_height:           f32,
+	text_engine:           ^ttf.TextEngine,
+	translation_allocator: mem.Allocator,
+	vm:                    ch44vm.Vm,
+	dbg_ctx:               Dbg_Context,
+	key_map:               map[sdl3.Scancode]u8,
+	target_frame_time:     u64,
+	last_time:             u64,
+	cpu_timer:             utils.Timer,
+	chip8_60hz_timer:      utils.Timer,
+	audio_device:          sdl3.AudioDeviceID,
+	audio_stream:          ^sdl3.AudioStream,
+	audio_sample_id:       u32,
+	audio_frequency:       f32,
+	audio_sample_rate:     f32,
+	audio_volume:          f32,
 }
 
-run_vm_app :: proc(opts: ^Options, translation_allocator: mem.Allocator) {
+Dbg_Context :: struct {
+	is_enabled: bool,
+	is_paused: bool,
+	disasm_ctx: ch44sm.Disasm_Context,
+	lines: [dynamic]^ttf.Text,
+	register_texts: [20]^ttf.Text,
+	scroll_y: f32,
+}
+
+run_vm_app :: proc(
+	opts: ^Options,
+	translation_allocator: mem.Allocator,
+) {
 	app_ctx := new(Vm_App_Context)
 	defer free(app_ctx)
 
 	opts := (^Vm_Options)(opts)
 	app_ctx.opts = opts
+	app_ctx.translation_allocator = translation_allocator
 
-	if !app_init(app_ctx, translation_allocator) do return
+	if !app_init(app_ctx) do return
 	app_mainloop(app_ctx)
 	app_quit(app_ctx)
 }
 
 @(private="file")
-app_init :: proc(app_ctx: ^Vm_App_Context, translation_allocator: mem.Allocator) -> (ok: bool) {
+app_init :: proc(app_ctx: ^Vm_App_Context) -> (ok: bool) {
 	if !sdl3.Init({.VIDEO, .AUDIO}) {
 		fmt.eprintln(sdl3.GetError())
 		return
-	}
-
-	src, err := os.read_entire_file_from_path(app_ctx.opts.src_path, context.allocator)
-	if err != nil {
-		fmt.eprintfln("Error: failed to read source file at '%s'. Reason: %v", app_ctx.opts.src_path, err)
-		return
-	}
-	defer delete(src)
-
-	ch44vm.init(&app_ctx.vm, app_ctx.opts.platform, app_ctx.opts.quirks, app_ctx.opts.no_font)
-
-	switch filepath.ext(app_ctx.opts.src_path) {
-	case ".ch8": ch44vm.load_bytes(&app_ctx.vm, src, app_ctx.vm.pc) or_return
-	case ".ch44sm":
-		asm_ctx: ch44sm.Asm_Context
-		asm_opts: Options = Asm_Options{src_path=app_ctx.opts.src_path}
-		if !run_asm_app(&asm_opts, &asm_ctx, translation_allocator) do return
-		ch44vm.load_bytes(&app_ctx.vm, asm_ctx.bytecode[:], app_ctx.vm.pc) or_return
 	}
 
 	window_flags: sdl3.WindowFlags = {.RESIZABLE}
@@ -98,7 +101,8 @@ app_init :: proc(app_ctx: ^Vm_App_Context, translation_allocator: mem.Allocator)
 		fmt.tprintf("Ch44vm: %s", app_ctx.opts.src_path),
 		context.temp_allocator
 	)
-	app_ctx.window = sdl3.CreateWindow(title_str, 800, 600, window_flags)
+	app_ctx.window_size = {800, 600}
+	app_ctx.window = sdl3.CreateWindow(title_str, app_ctx.window_size.x, app_ctx.window_size.y, window_flags)
 	if app_ctx.window == nil {
 		fmt.eprintln(sdl3.GetError())
 		return
@@ -109,6 +113,9 @@ app_init :: proc(app_ctx: ^Vm_App_Context, translation_allocator: mem.Allocator)
 		fmt.eprintln(sdl3.GetError())
 		return
 	}
+	sdl3.SetRenderDrawBlendMode(app_ctx.renderer, {.BLEND})
+
+	app_ctx.text_engine = ttf.CreateRendererTextEngine(app_ctx.renderer)
 
 	app_ctx.canvas = sdl3.CreateTexture(
 		app_ctx.renderer,
@@ -119,6 +126,80 @@ app_init :: proc(app_ctx: ^Vm_App_Context, translation_allocator: mem.Allocator)
 	)
 	sdl3.SetTextureScaleMode(app_ctx.canvas, .NEAREST)
 
+	app_ctx.canvas_dest = sdl3.FRect {
+	    x = 0.0,
+	    y = 0.0,
+	    w = f32(app_ctx.window_size.x),
+	    h = f32(app_ctx.window_size.y),
+	}
+
+	if !ttf.Init() {
+		fmt.eprintfln("Error: failed to init ttf. Reason: %v", sdl3.GetError())
+		return
+    }
+
+    font := ttf.OpenFont("assets/fonts/Source_Code_Pro/SourceCodePro-Regular.ttf", 16.0)
+    if font == nil {
+		fmt.eprintfln("Error: failed to open font. Reason: %v", sdl3.GetError())
+		return
+    }
+
+    app_ctx.font = font
+    char_height: i32 = ttf.GetFontHeight(font)
+    app_ctx.char_height = f32(char_height)
+
+	src, err := os.read_entire_file_from_path(app_ctx.opts.src_path, context.allocator)
+	if err != nil {
+		fmt.eprintfln("Error: failed to read source file at '%s'. Reason: %v", app_ctx.opts.src_path, err)
+		return
+	}
+	defer delete(src)
+
+	ch44vm.init(&app_ctx.vm, app_ctx.opts.platform, app_ctx.opts.quirks, app_ctx.opts.no_font)
+
+	bytecode: []u8 = src
+
+	switch filepath.ext(app_ctx.opts.src_path) {
+	case ".ch8": ch44vm.load_bytes(&app_ctx.vm, bytecode, app_ctx.vm.pc) or_return
+	case ".ch44sm":
+		asm_ctx: ch44sm.Asm_Context
+		asm_opts: Options = Asm_Options{src_path=app_ctx.opts.src_path}
+		if !run_asm_app(&asm_opts, &asm_ctx, app_ctx.translation_allocator) do return
+		bytecode = asm_ctx.bytecode[:]
+		ch44vm.load_bytes(&app_ctx.vm, bytecode, app_ctx.vm.pc) or_return
+	}
+
+	if app_ctx.opts.debug {
+		app_ctx.dbg_ctx.is_enabled = true
+		app_ctx.dbg_ctx.is_paused = true
+		ch44sm.disasm_ctx_init(
+			dctx = &app_ctx.dbg_ctx.disasm_ctx,
+			src_path = app_ctx.opts.src_path,
+			src = bytecode,
+			org = 0x200,
+			allocator = app_ctx.translation_allocator,
+		)
+
+		asm_source := ch44sm.disassemble(&app_ctx.dbg_ctx.disasm_ctx, app_ctx.translation_allocator)
+		lines, err := strings.split_lines(asm_source, app_ctx.translation_allocator)
+		for line_str in lines {
+		    txt_obj := ttf.CreateText(
+		    	app_ctx.text_engine,
+		    	app_ctx.font,
+		    	([^]u8)(raw_data(line_str)),
+		    	len(line_str)
+		    )
+		    append(&app_ctx.dbg_ctx.lines, txt_obj)
+		}
+
+		app_ctx.canvas_dest = sdl3.FRect {
+		    x = f32(app_ctx.window_size.x - 448),
+		    y = 0.0,
+		    w = 448.0,
+		    h = 224.0,
+		}
+	}
+	
 	app_ctx.last_time = sdl3.GetTicksNS()
 	app_ctx.target_frame_time = 1_000_000_000 / u64(app_ctx.opts.target_fps)
 
@@ -204,6 +285,9 @@ handle_events :: #force_inline proc (app_ctx: ^Vm_App_Context) -> (advance := tr
 			#partial switch event.key.scancode {
 			case .ESCAPE:
 				return false
+			case .S: ch44vm.tick(&app_ctx.vm)
+			case .GRAVE:
+				if app_ctx.opts.debug do app_ctx.dbg_ctx.is_enabled = !app_ctx.dbg_ctx.is_enabled
 			}
 
 			if chip8_key, ok := app_ctx.key_map[event.key.scancode]; ok {
@@ -220,9 +304,32 @@ handle_events :: #force_inline proc (app_ctx: ^Vm_App_Context) -> (advance := tr
 
 @(private="file")
 update :: #force_inline proc (app_ctx: ^Vm_App_Context, dt: f64) -> (advance := true) {
-	utils.timer_update(&app_ctx.cpu_timer, dt)
-	utils.timer_update(&app_ctx.chip8_60hz_timer, dt)
-	update_audio(app_ctx)
+	if !app_ctx.dbg_ctx.is_paused {
+		utils.timer_update(&app_ctx.cpu_timer, dt)
+	}
+
+	if !app_ctx.opts.debug {
+		utils.timer_update(&app_ctx.chip8_60hz_timer, dt)
+		update_audio(app_ctx)
+	}
+
+	if app_ctx.dbg_ctx.is_enabled {
+		app_ctx.canvas_dest = sdl3.FRect {
+		    x = f32(app_ctx.window_size.x - 448),
+		    y = 0.0,
+		    w = 448.0,
+		    h = 224.0,
+		}
+	} else {
+		app_ctx.canvas_dest = sdl3.FRect {
+		    x = 0.0,
+		    y = 0.0,
+		    w = f32(app_ctx.window_size.x),
+		    h = f32(app_ctx.window_size.y),
+		}
+	}
+
+	update_dbg_registers(app_ctx.text_engine, app_ctx.font, &app_ctx.dbg_ctx, &app_ctx.vm)
 
 	if app_ctx.vm.status == .Exited do return false
 
@@ -264,12 +371,111 @@ update :: #force_inline proc (app_ctx: ^Vm_App_Context, dt: f64) -> (advance := 
 	return true
 }
 
+update_dbg_registers :: proc(engine: ^ttf.TextEngine, font: ^ttf.Font, ctx: ^Dbg_Context, vm: ^ch44vm.Vm) {
+	buf: [64]byte
+
+	update_reg_text :: proc(engine: ^ttf.TextEngine, font: ^ttf.Font, text_obj: ^^ttf.Text, str: string) {
+		ptr := cast([^]u8)raw_data(str)
+		length := uint(len(str))
+
+		if text_obj^ == nil {
+			text_obj^ = ttf.CreateText(engine, font, ptr, length)
+		} else {
+			ttf.SetTextString(text_obj^, ptr, length)
+		}
+	}
+
+	for idx in 0..<16 {
+		str := fmt.bprintf(buf[:], "v%x: 0x%02X", idx, vm.v[idx])
+		update_reg_text(engine, font, &ctx.register_texts[idx], str)
+	}
+
+	str_pc := fmt.bprintf(buf[:], "pc: 0x%04X", vm.pc)
+	update_reg_text(engine, font, &ctx.register_texts[16], str_pc)
+
+	str_i := fmt.bprintf(buf[:], "i:  0x%04X", vm.i)
+	update_reg_text(engine, font, &ctx.register_texts[17], str_i)
+
+	str_dt := fmt.bprintf(buf[:], "dt: %3d", vm.delay_timer)
+	update_reg_text(engine, font, &ctx.register_texts[18], str_dt)
+
+	str_st := fmt.bprintf(buf[:], "st: %3d", vm.sound_timer)
+	update_reg_text(engine, font, &ctx.register_texts[19], str_st)
+}
+
 @(private="file")
 render :: #force_inline proc(app_ctx: ^Vm_App_Context) {
-	sdl3.SetRenderDrawColor(app_ctx.renderer, 0, 0, 0, 255)
+	sdl3.SetRenderDrawColor(app_ctx.renderer, 10, 10, 10, 255)
 	sdl3.RenderClear(app_ctx.renderer)
-	sdl3.RenderTexture(app_ctx.renderer, app_ctx.canvas, nil, nil)
+
+	draw_asm_source(app_ctx)
+	draw_dbg_registers(app_ctx, app_ctx.font)
+
+	sdl3.RenderTexture(app_ctx.renderer, app_ctx.canvas, nil, &app_ctx.canvas_dest)
 	sdl3.RenderPresent(app_ctx.renderer)
+}
+
+draw_asm_source :: proc(app_ctx: ^Vm_App_Context) {
+	pc_idx := app_ctx.dbg_ctx.disasm_ctx.row_addrs[int(app_ctx.vm.pc)]
+	target_line_y := f32(pc_idx) * app_ctx.char_height
+	center_y := f32(app_ctx.window_size.y / 2) - (app_ctx.char_height / 2)
+	app_ctx.dbg_ctx.scroll_y = target_line_y - center_y
+
+	if app_ctx.dbg_ctx.scroll_y < 0 {
+		app_ctx.dbg_ctx.scroll_y = 0
+	}
+
+	for txt_obj, idx in app_ctx.dbg_ctx.lines {
+		line_y := (f32(idx) * app_ctx.char_height) - app_ctx.dbg_ctx.scroll_y
+
+		if line_y + app_ctx.char_height < 0 || line_y > f32(app_ctx.window_size.y) {
+			continue		
+		}
+
+		if app_ctx.dbg_ctx.scroll_y < 0 do app_ctx.dbg_ctx.scroll_y = 0
+
+		if idx == pc_idx {
+			sdl3.SetRenderDrawColor(app_ctx.renderer, 40, 145, 80, 55)
+
+			highlight_rect := sdl3.FRect{
+				x = 0,
+				y = line_y,
+				w = f32(app_ctx.window_size.x - 448),
+				h = app_ctx.char_height,
+			}
+
+			sdl3.RenderFillRect(app_ctx.renderer, &highlight_rect)
+		}
+		
+	    ttf.DrawRendererText(txt_obj, 0, line_y)
+	}
+}
+
+draw_dbg_registers :: proc(app_ctx: ^Vm_App_Context, font: ^ttf.Font) {
+	start_x: f32 = app_ctx.canvas_dest.x
+	start_y: f32 = app_ctx.canvas_dest.y + app_ctx.canvas_dest.h
+		
+	col_width: f32 = 120.0 
+
+	for text_obj, idx in app_ctx.dbg_ctx.register_texts {
+		if text_obj == nil do continue
+
+		col_x: f32 = start_x
+		line_y: f32 = start_y
+
+		if idx < 16 {
+			col_x = start_x
+			line_y = start_y + (f32(idx) * app_ctx.char_height)
+		} else if idx >= 17 && idx <= 19 {
+			col_x = start_x + col_width
+			line_y = start_y + (f32(idx - 17) * app_ctx.char_height)
+		} else if idx == 16 {
+			col_x = start_x + (col_width * 2)
+			line_y = start_y
+		}
+
+		ttf.DrawRendererText(text_obj, col_x, line_y)
+	}
 }
 
 @(private="file")
@@ -277,12 +483,27 @@ app_quit :: proc (app_ctx: ^Vm_App_Context) {
 	if app_ctx != nil {
 		ch44vm.destroy(&app_ctx.vm)
 		delete(app_ctx.key_map)
+
+		for txt in app_ctx.dbg_ctx.lines {
+			ttf.DestroyText(txt)
+		}
+
+		for text_obj in app_ctx.dbg_ctx.register_texts {
+			if text_obj != nil {
+				ttf.DestroyText(text_obj)
+			}
+		}
+
+		ttf.DestroyRendererTextEngine(app_ctx.text_engine)
+	    ttf.CloseFont(app_ctx.font)
+
 		if app_ctx.renderer != nil do sdl3.DestroyRenderer(app_ctx.renderer)
 		sdl3.DestroyTexture(app_ctx.canvas)
 		if app_ctx.window != nil do sdl3.DestroyWindow(app_ctx.window)
 		if app_ctx.audio_stream != nil do sdl3.DestroyAudioStream(app_ctx.audio_stream)
 	}
 
+    ttf.Quit()
 	sdl3.Quit()
 }
 

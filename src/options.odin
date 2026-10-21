@@ -28,6 +28,7 @@ Vm_Options :: struct {
 	fullscreen: bool                   `usage:"Launch the virtual machine in fullscreen mode."`,
 	maximized:  bool                   `usage:"Launch the virtual machine with a maximized window."`,
 	mute:       bool                   `usage:"Mute all audio output (overrides --volume)."`,
+	debug:      bool                   `usage:"Enable debug mode, press 'S' to step, press 'Tilde' to fullscreen VM display"`,
 }
 
 Asm_Options :: struct {

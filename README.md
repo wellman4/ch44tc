@@ -14,14 +14,16 @@
 </div>
 
 ## ✨ Features
+- 🪲 Debugger
 - 👾 CHIP-8 Bytecode Interpreter (Register-Based Virtual Machine)
 - ⚙️ Assembler
 - 🔍 Assembly diagnostics report (clear error reporting and code analysis during assembly)
-- 🪲 Disassembler
+- 🔓 Disassembler
 - 🚀 Super-CHIP extension 
 
 > [!NOTE]
 > Currently, the assembler and disassembler support the **standard CHIP-8 specification only**.
+The disassembler may generate *junk instructions*
 
 ## 💾 Project Formats
 The assembler uses a file format **`.ch44sm`** for source code. Ensure your source files
@@ -34,7 +36,7 @@ Before getting started, ensure you have the following tools installed:
 * **[Odin](https://odin-lang.org/):** The project is written in Odin, so you will need
 the compiler and its base, core and vendor packages which come pre-bundled with the compiler.
 Follow the [Official Installation Guide](https://odin-lang.org/docs/install/).
-* **[SDL3](https://libsdl.org/):** The Ch44 Toolchain relies on SDL3 for graphics, input and audio. 
+* **[SDL3](https://libsdl.org/):** The Ch44 Toolchain relies on SDL3 for graphics, input and audio, and uses the SDL3_ttf for font rendering.
 
 ### Installation & Running
 #### 1. Clone the repository
@@ -51,6 +53,12 @@ Use the Odin compiler to build and run the project. For example, to run an assem
 ```bash
 odin run src -- run ./asm/main.ch44sm
 ```
+
+## 💖 Support the Project
+If you find this project useful or interesting, you can support its development by:
+* 🌟 **Leaving a star** on GitHub to help others discover it.
+
+Your support means a lot and keeps the project moving forward!
 
 ## 👤 Author
 **wellman4**

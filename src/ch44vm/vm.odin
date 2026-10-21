@@ -103,6 +103,7 @@ init :: proc(v: ^Vm, platform: Platform, quirks: Quirks, no_font: bool) {
 	v.display_size = {64, 32}
 	v.platform = platform
 	v.status = .Running
+	v.is_display_dirty = true
 
 	switch v.platform {
 	case .Chip8:

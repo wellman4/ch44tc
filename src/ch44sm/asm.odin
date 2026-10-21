@@ -40,6 +40,24 @@ Disasm_Context :: struct {
 	org:          int,
 	symbol_table: map[int]string,
 	builder:      strings.Builder,
+	row_addrs:   map[int]int,
+}
+
+disasm_ctx_init :: proc(
+	dctx: ^Disasm_Context,
+	src_path: string,
+	src: []u8,
+	org: int,
+	allocator: mem.Allocator,
+
+) {
+	context.allocator = allocator
+	dctx.src_path     = src_path
+	dctx.src          = src
+	dctx.org          = org
+	dctx.symbol_table = make(map[int]string, context.allocator)
+	strings.builder_init(&dctx.builder, context.allocator)
+	dctx.row_addrs = make(map[int]int, context.allocator)
 }
 
 assemble :: proc(asm_ctx: ^Asm_Context, allocator: mem.Allocator) -> (ok: bool) {
@@ -51,7 +69,6 @@ assemble :: proc(asm_ctx: ^Asm_Context, allocator: mem.Allocator) -> (ok: bool) 
 	parser: Parser
 	parser_init(&parser, asm_ctx, &lexer)
 
-
 	if !parse(&parser) do return false
 	if !resolve(asm_ctx) do return false
 	if !emit_program(asm_ctx) do return false
@@ -61,7 +78,6 @@ assemble :: proc(asm_ctx: ^Asm_Context, allocator: mem.Allocator) -> (ok: bool) 
 
 disassemble :: proc(disasm_ctx: ^Disasm_Context, allocator: mem.Allocator) -> string {
 	context.allocator = allocator
-
 
 	bytes := disasm_ctx.src
 	label_counter := 0
@@ -83,14 +99,19 @@ disassemble :: proc(disasm_ctx: ^Disasm_Context, allocator: mem.Allocator) -> st
 	}
 
 	strings.write_string(&disasm_ctx.builder, "_start:\n")
+	row := 1
 	for i := 0; i < len(bytes); i += 2 {
+		defer row += 1
+
 		if i + 1 >= len(bytes) {
 			break
 		}
 
 		if label, exists := disasm_ctx.symbol_table[disasm_ctx.org + i]; exists {
 			fmt.sbprintfln(&disasm_ctx.builder, "%s:", label)
+			row += 1
 		}
+		disasm_ctx.row_addrs[disasm_ctx.org + i] = row
 
 		opcode := (u16(bytes[i]) << 8) | u16(bytes[i + 1])
 

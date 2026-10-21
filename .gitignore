@@ -5,7 +5,10 @@
 !*.odin
 !*.ch44sm
 !*.svg
+!*.ttf
+!*.txt
 
 !.gitignore
 !README.md
 !LICENSE
+!NOTICE

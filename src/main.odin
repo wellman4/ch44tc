@@ -83,9 +83,9 @@ run_asm_app :: proc(
 	asm_ctx.symbol_table = make(map[string]ch44sm.Symbol_Info)
 	asm_ctx.bytecode     = make([dynamic]u8)
 
-	if opts.dump_tokens || opts.dump_all do asm_ctx.emit_tokens = true
-
 	asm_ok := ch44sm.assemble(asm_ctx, context.allocator)
+
+	if opts.dump_tokens || opts.dump_all do asm_ctx.emit_tokens = true
 	if (opts.dump_tokens || opts.dump_all) && asm_ctx.emit_tokens {
 		dump_tokens(asm_ctx)
 	}
